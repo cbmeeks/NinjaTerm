@@ -1,5 +1,7 @@
 # NinjaTerm 1.0.0
 
+![NinjaTerm Options Menu](https://sharpninja.github.io/NinjaTerm/ninjaterm-options.png)
+
 NinjaTerm is an all-assembler term program for the Commodore VIC-20.  NinjaTerm has the following features:
 * Very, very fast
 * Works at speeds up to 2400 baud in VICE
