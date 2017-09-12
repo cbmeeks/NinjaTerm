@@ -42,6 +42,17 @@
     <PaddingByte>234</PaddingByte>
     <SourceFiles>
         <SourceFile>
+            <Name>Addresses.sdd</Name>
+            <PrgName />
+            <FileType>9</FileType>
+            <IncludeInBuild>True</IncludeInBuild>
+            <Regions />
+            <Breakpoints />
+            <Bookmarks />
+            <Topmost>False</Topmost>
+            <FileOpen>False</FileOpen>
+        </SourceFile>
+        <SourceFile>
             <Name>Chars.cst</Name>
             <PrgName />
             <FileType>6</FileType>
