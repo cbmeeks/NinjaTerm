@@ -54,12 +54,61 @@ SETLFS  = $FFBA
 SETNAM  = $FFBD
 OPEN    = $FFC0
 PLOT    = $FFF0
+SAVE    = $FFD8
+LOAD    = $FFD5
 
 ; 10 SYS16384
 
 *=$1201
 
         BYTE    $0B, $12, $0A, $00, $9E, $31, $36, $33, $38, $34, $00, $00, $00
+
+*=$12FE
+PREFS_HEADER
+        byte    $00, $13
+
+*=$1300
+PREFS
+; 242 bytes
+BAUD_RATE
+        byte    1
+
+ADD_SEL byte    $01
+
+
+ADDRESSES
+NAME1   text    "Altiworld    "
+ADDR1   text    "altiworld.com"
+PORT1   text    "6400"
+
+NAME2   text    "             "
+ADDR2   text    "             "
+PORT2   text    "    "
+
+NAME3   text    "             "
+ADDR3   text    "             "
+PORT3   text    "    "
+
+NAME4   text    "             "
+ADDR4   text    "             "
+PORT4   text    "    "
+
+NAME5   text    "             "
+ADDR5   text    "             "
+PORT5   text    "    "
+
+NAME6   text    "             "
+ADDR6   text    "             "
+PORT6   text    "    "
+
+NAME7   text    "             "
+ADDR7   text    "             "
+PORT7   text    "    "
+
+NAME8   text    "localhost    "
+ADDR8   text    "127.0.0.1    "
+PORT8   text    "6400"
+PREFS_END
 
 ZP_POINTER 
         byte    $00, $00
@@ -77,44 +126,7 @@ CHAL1   byte    $00
 CHAL2   byte    $00
 CHAL3   byte    $00
 
-BAUD_RATE
-        byte    1
-
-ADD_SEL byte    $01
-
-
-ADDRESSES
-NAME1   text    "Altiworld    "
-ADDR1   text    "altiworld.com"
-PORT1   text    "6400"
-
-NAME2   text    "Anarchy Under"
-ADDR2   text    "0            "
-PORT2   text    "    "
-
-NAME3   text    "Madworld     "
-ADDR3   text    "1            "
-PORT3   text    "    "
-
-NAME4   text    "Particles!   "
-ADDR4   text    "2            "
-PORT4   text    "    "
-
-NAME5   text    "Cottonwood   "
-ADDR5   text    "3            "
-PORT5   text    "    "
-
-NAME6   text    "Antidote     "
-ADDR6   text    "4            "
-PORT6   text    "    "
-
-NAME7   text    "The Hidden   "
-ADDR7   text    "5            "
-PORT7   text    "    "
-
-NAME8   text    "localhost    "
-ADDR8   text    "127.0.0.1    "
-PORT8   text    "6400"
+DEVICE  byte    $00
 
 MAXCHARS
         byte    $00
@@ -132,7 +144,10 @@ GOTINPUT
 *=$4000
         jsr     CLALL     
 
-                          ; BLACK/BLACK Background
+        lda     $BA
+        sta     DEVICE
+
+        ; BLACK/BLACK Background
         lda     #$08      
         sta     VIC_VICCRF
 
@@ -156,6 +171,8 @@ GOTINPUT
         jsr     Setup_Screen
         jsr     Setup_Keyboard
         jsr     Setup_Userport
+
+        jsr     LoadPrefs
 
 MAIN_ST jsr     Show_Term_Screen
 
@@ -235,11 +252,18 @@ MAIN_KOUT
         ldx     #10       
         jsr     CHKOUT    
 
-        lda     PRESSED   
+        lda     PRESSED 
+  
         jsr     CHROUT    
         jmp     MAIN_A    
 
 RS232_IN
+        cmp     #14
+        beq     MAIN_T0
+
+        cmp     #142
+        beq     MAIN_T1
+
         jsr     CHALLENGE_RESPONSE
         pha
 
@@ -257,6 +281,92 @@ MAIN_KDONE
         JSR     CLOSE     
         JSR     CLRCHN    
         rts
+
+FILENAME
+        text    "@0:"
+FILENAME_SHORT
+        text    "ninjaterm.prefs"
+;;----------------------------------------------------
+SavePrefs    
+        lda     #18
+        ldx     #<FILENAME
+        ldy     #>FILENAME
+        jsr     SETNAM
+
+        lda     #0
+        ldx     DEVICE
+        ldy     #0
+        jsr     SETLFS
+
+        lda     #<PREFS_HEADER
+        sta     $FB
+        lda     #>PREFS_HEADER
+        sta     $FC
+
+        lda     #$FB
+        ldx     #<PREFS_END
+        ldy     #>PREFS_END
+        jsr     SAVE
+
+        bcs     SP_ERROR
+
+        ldx     #3
+        jsr     CHKOUT
+
+        ldy     #0
+SP_SUCCESS_
+        lda     SP_SUCCESS_MSG,y
+        beq     SP_SEC_D
+        jsr     CHROUT
+        iny
+        jmp     SP_SUCCESS_ 
+
+SP_SEC_D
+        lda     #255
+        jsr     WAIT
+
+SP_DONE
+        rts
+
+SP_ERROR
+
+        ldx     #3
+        jsr     CHKOUT
+
+        ldy     #0
+SP_ERROR_
+        lda     SP_ERROR_MSG,y
+        beq     SP_ERR_D
+        jsr     CHROUT
+        iny
+        jmp     SP_ERROR_ 
+
+SP_ERR_D
+        lda     #255
+        jsr     WAIT
+
+        jmp     SP_DONE
+
+SP_ERROR_MSG
+        text    147, 28, "Error Saving Prefs", 31, 0
+SP_SUCCESS_MSG
+        text    147, 30, "Saved Prefs", 31, 0
+
+;;----------------------------------------------------
+LoadPrefs
+        lda     #15
+        ldx     #<FILENAME_SHORT
+        ldy     #>FILENAME_SHORT
+        jsr     SETNAM
+
+        lda     #0
+        ldx     DEVICE
+        ldy     #$FF
+        jsr     SETLFS
+
+        lda     #0
+        jsr     LOAD
+
 
 ;;----------------------------------------------------
 hangup
@@ -452,7 +562,11 @@ OPT_AD  lda     PRESSED
         sta     BAUD_RATE 
         jmp     Options   
 
-OPT_AE
+OPT_AE  lda     PRESSED
+        cmp     #KEY_SAVE
+        bne     OPT_N
+        jsr     SavePrefs
+        
 OPT_N   jmp     Options
 
 OPT_B
@@ -485,6 +599,12 @@ ADD_11  lda     #0
         clc
         jsr     PLOT      
 
+        lda     #31
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<NAME1   
         sta     $fb       
         lda     #>NAME1   
@@ -508,6 +628,12 @@ ADD_1   lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #30
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<ADDR1   
         sta     $fb       
         lda     #>ADDR1   
@@ -530,10 +656,16 @@ ADD_1a  lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #5
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<PORT1   
         sta     $fb       
         lda     #>PORT1   
-        sta     $fc       
+        sta     $fc   
 
         ldy     #0        
 ADD_1b  lda     ($fb),y
@@ -553,16 +685,16 @@ ADD_1b  lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #31
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<NAME2   
         sta     $fb       
         lda     #>NAME2   
         sta     $fc       
-
-        lda     #31       
-        jsr     CHROUT    
-
-        lda     #146      
-        jsr     CHROUT    
 
         ldy     #$00      
 ADD_2   lda     ($fb),y
@@ -582,16 +714,16 @@ ADD_2   lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #30
+        jsr     CHROUT
+
+        lda     #146      
+        jsr     CHROUT    
+
         lda     #<ADDR2   
         sta     $fb       
         lda     #>ADDR2   
         sta     $fc       
-
-        lda     #31       
-        jsr     CHROUT    
-
-        lda     #146      
-        jsr     CHROUT    
 
         ldy     #0        
 ADD_2a  lda     ($fb),y
@@ -609,6 +741,12 @@ ADD_2a  lda     ($fb),y
         tax
         clc
         jsr     PLOT      
+
+        lda     #5
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
 
         lda     #<PORT2   
         sta     $fb       
@@ -639,16 +777,16 @@ ADD_2b  lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #31
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<NAME3   
         sta     $fb       
         lda     #>NAME3   
         sta     $fc       
-
-        lda     #31       
-        jsr     CHROUT    
-
-        lda     #146      
-        jsr     CHROUT    
 
         ldy     #$00      
 ADD_3   lda     ($fb),y
@@ -668,16 +806,16 @@ ADD_3   lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #30
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<ADDR3   
         sta     $fb       
         lda     #>ADDR3   
         sta     $fc       
-
-        lda     #31       
-        jsr     CHROUT    
-
-        lda     #146      
-        jsr     CHROUT    
 
         ldy     #0        
 ADD_3a  lda     ($fb),y
@@ -696,16 +834,16 @@ ADD_3a  lda     ($fb),y
         clc
         jsr     PLOT      
 
+        lda     #5
+        jsr     CHROUT
+
+        lda     #146
+        jsr     CHROUT
+
         lda     #<PORT3   
         sta     $fb       
         lda     #>PORT3   
         sta     $fc       
-
-        lda     #31       
-        jsr     CHROUT    
-
-        lda     #146      
-        jsr     CHROUT    
 
         ldy     #0        
 ADD_3b  lda     ($fb),y
@@ -759,7 +897,7 @@ ADD_4   lda     ($fb),y
         lda     #>ADDR4   
         sta     $fc       
 
-        lda     #31       
+        lda     #30       
         jsr     CHROUT    
 
         lda     #146      
@@ -787,7 +925,7 @@ ADD_4a  lda     ($fb),y
         lda     #>PORT4   
         sta     $fc       
 
-        lda     #31       
+        lda     #5       
         jsr     CHROUT    
 
         lda     #146      
@@ -845,7 +983,7 @@ ADD_5   lda     ($fb),y
         lda     #>ADDR5   
         sta     $fc       
 
-        lda     #31       
+        lda     #30       
         jsr     CHROUT    
 
         lda     #146      
@@ -873,7 +1011,7 @@ ADD_5a  lda     ($fb),y
         lda     #>PORT5   
         sta     $fc       
 
-        lda     #31       
+        lda     #5       
         jsr     CHROUT    
 
         lda     #146      
@@ -902,7 +1040,7 @@ ADD_5b  lda     ($fb),y
         lda     #>NAME6   
         sta     $fc       
 
-        lda     #31       
+        lda     #31      
         jsr     CHROUT    
 
         lda     #146      
@@ -931,7 +1069,7 @@ ADD_6   lda     ($fb),y
         lda     #>ADDR6   
         sta     $fc       
 
-        lda     #31       
+        lda     #30       
         jsr     CHROUT    
 
         lda     #146      
@@ -959,7 +1097,7 @@ ADD_6a  lda     ($fb),y
         lda     #>PORT6   
         sta     $fc       
 
-        lda     #31       
+        lda     #5       
         jsr     CHROUT    
 
         lda     #146      
@@ -988,7 +1126,7 @@ ADD_6b  lda     ($fb),y
         lda     #>NAME7   
         sta     $fc       
 
-        lda     #31       
+        lda     #31      
         jsr     CHROUT    
 
         lda     #146      
@@ -1017,7 +1155,7 @@ ADD_7   lda     ($fb),y
         lda     #>ADDR7   
         sta     $fc       
 
-        lda     #31       
+        lda     #30       
         jsr     CHROUT    
 
         lda     #146      
@@ -1045,7 +1183,7 @@ ADD_7a  lda     ($fb),y
         lda     #>PORT7   
         sta     $fc       
 
-        lda     #31       
+        lda     #5      
         jsr     CHROUT    
 
         lda     #146      
@@ -1074,7 +1212,7 @@ ADD_7b  lda     ($fb),y
         lda     #>NAME8   
         sta     $fc       
 
-        lda     #31       
+        lda     #31      
         jsr     CHROUT    
 
         lda     #146      
@@ -1103,7 +1241,7 @@ ADD_8   lda     ($fb),y
         lda     #>ADDR8   
         sta     $fc       
 
-        lda     #31       
+        lda     #30       
         jsr     CHROUT    
 
         lda     #146      
@@ -1131,7 +1269,7 @@ ADD_8a  lda     ($fb),y
         lda     #>PORT8   
         sta     $fc       
 
-        lda     #31       
+        lda     #5       
         jsr     CHROUT    
 
         lda     #146      
@@ -1150,22 +1288,22 @@ ADD_8b  lda     ($fb),y
         jsr     PLOT      
 
 ADD__   lda     #<ADDRESSES
-        sta     $9B       
+        sta     $FB       
         lda     #>ADDRESSES
-        sta     $9C       
+        sta     $FC       
 
         ldx     ADD_SEL   
 
 ADD__1  dex
         cpx     #0        
         beq     ADD___    
-        lda     $9B       
+        lda     $FB       
         clc
         adc     #30       
-        sta     $9B       
-        lda     $9C       
+        sta     $FB       
+        lda     $FC       
         adc     #0        
-        sta     $9C       
+        sta     $FC       
         jmp     ADD__1    
 
 ADD___  clc
@@ -1174,7 +1312,7 @@ ADD___  clc
         jsr     PLOT      
 
         ldy     #00       
-ADD__2  lda     ($9B),y
+ADD__2  lda     ($FB),y
         jsr     CHROUT    
         iny
         cpy     #13       
@@ -1186,7 +1324,7 @@ ADD__2  lda     ($9B),y
         jsr     PLOT      
 
         ldy     #13       
-ADD__3  lda     ($9B),y
+ADD__3  lda     ($FB),y
         jsr     CHROUT    
         iny
         cpy     #26       
@@ -1198,7 +1336,7 @@ ADD__3  lda     ($9B),y
         jsr     PLOT      
 
         ldy     #26       
-ADD__4  lda     ($9B),y
+ADD__4  lda     ($FB),y
         jsr     CHROUT    
         iny
         cpy     #30       
@@ -1324,7 +1462,7 @@ ADD_PRT iny
         bne     ADD_PRT   
 
 ADD_G   lda     ($FB),y
-        cmp     $20       
+        cmp     #$20       
         beq     ADD_DONE  
 
         lda     #58       
@@ -1352,22 +1490,24 @@ ADD_DONE
 ;;----------------------------------------------------
 EDIT_MODE
         lda     #<ADDRESSES
-        sta     $9B       
+        sta     $FB      
+        sta     ZP_POINTER
         lda     #>ADDRESSES
-        sta     $9C       
+        sta     $FC       
+        sta     ZP_POINTER + 1
 
         ldy     ADD_SEL 
         dey
-        bne     EDIT_AA
+        beq     EDIT_AA
 
 EDIT_A  clc
-        lda     $9B       
+        lda     $FB       
         adc     #30       
-        sta     $9B       
+        sta     $FB       
         sta     ZP_POINTER
-        lda     $9C       
-        adc     $00       
-        sta     $9C       
+        lda     $FC       
+        adc     #$00       
+        sta     $FC       
         sta     ZP_POINTER + 1
         dey
         bne     EDIT_A    
@@ -1385,12 +1525,12 @@ EDIT_1  lda     TXT_SAVE,y
         bne     EDIT_1    
 
         lda     ZP_POINTER
-        sta     $9B
+        sta     $FB
         lda     ZP_POINTER + 1
-        sta     $9C
+        sta     $FC
 
         ldy     #0        
-EDIT_1_ lda     ($9B),y
+EDIT_1_ lda     ($FB),y
         sta     GOTINPUT,y
         iny
         cpy     #13       
@@ -1419,29 +1559,34 @@ EDIT_1_ lda     ($9B),y
         jmp     EDIT_DONE
 
 EDIT_1b lda     ZP_POINTER
-        sta     $9B
+        sta     $FB
         lda     ZP_POINTER + 1
-        sta     $9C
+        sta     $FC
 
         ldy     #0
 EDIT_1c lda     GOTINPUT,y
-        sta     ($9B),y   
+        sta     ($FB),y   
         iny
         cpy     #13       
         bne     EDIT_1c   
 
-EDIT_2  clc
-        lda     $9B       
+EDIT_2  lda     LASTCHAR
+        cmp     #137
+        bne     EDIT_1d
+        jmp     EDIT_DONE
+
+EDIT_1d clc
+        lda     $FB       
         adc     #13
-        sta     $9B       
+        sta     $FB       
         sta     ZP_POINTER
-        lda     $9C       
-        adc     $00       
-        sta     $9C       
+        lda     $FC       
+        adc     #$00       
+        sta     $FC       
         sta     ZP_POINTER + 1
 
         ldy     #0        
-EDIT_2_ lda     ($9B),y
+EDIT_2_ lda     ($FB),y
         sta     GOTINPUT,y
         iny
         cpy     #13       
@@ -1464,29 +1609,33 @@ EDIT_2_ lda     ($9B),y
         beq     EDIT_DONE
 
 EDIT_2b lda     ZP_POINTER
-        sta     $9B
+        sta     $FB
         lda     ZP_POINTER + 1
-        sta     $9C
+        sta     $FC
 
         ldy     #0
 EDIT_2c lda     GOTINPUT,y
-        sta     ($9B),y   
+        sta     ($FB),y   
         iny
         cpy     #13       
         bne     EDIT_2c   
 
-EDIT_3  clc
-        lda     $9B       
+EDIT_3  lda     LASTCHAR
+        cmp     #137
+        beq     EDIT_DONE
+
+        clc
+        lda     $FB       
         adc     #13
-        sta     $9B       
+        sta     $FB       
         sta     ZP_POINTER
-        lda     $9C       
-        adc     $00       
-        sta     $9C       
+        lda     $FC       
+        adc     #$00       
+        sta     $FC       
         sta     ZP_POINTER + 1
 
         ldy     #0        
-EDIT_3_ lda     ($9B),y
+EDIT_3_ lda     ($FB),y
         sta     GOTINPUT,y
         iny
         cpy     #4        
@@ -1511,13 +1660,13 @@ EDIT_3_ lda     ($9B),y
 
 
 EDIT_3b lda     ZP_POINTER
-        sta     $9B
+        sta     $FB
         lda     ZP_POINTER + 1
-        sta     $9C
+        sta     $FC
 
         ldy     #0
 EDIT_3c lda     GOTINPUT,y
-        sta     ($9B),y   
+        sta     ($FB),y   
         iny
         cpy     #4        
         bne     EDIT_3c   
@@ -1827,6 +1976,9 @@ INPUT_GET
         beq     DELETE    
 
         cmp     #$0d      ;Return
+        beq     INPUT_DONE
+
+        cmp     #137
         beq     INPUT_DONE
 
                           ;End reached?
@@ -2184,7 +2336,7 @@ CHARS_UPPER
         byte    $e1,$f3,$f3,$f3,$f3,$93,$c7,$ff
         byte    $99,$93,$87,$8f,$87,$93,$99,$ff
         byte    $9f,$9f,$9f,$9f,$9f,$9f,$81,$ff
-        byte    $9c,$88,$80,$94,$9c,$9c,$9c,$ff
+        byte    $FC,$88,$80,$94,$FC,$FC,$FC,$ff
         byte    $99,$89,$81,$81,$91,$99,$99,$ff
         byte    $c3,$99,$99,$99,$99,$99,$c3,$ff
         byte    $83,$99,$99,$83,$9f,$9f,$9f,$ff
@@ -2194,7 +2346,7 @@ CHARS_UPPER
         byte    $81,$e7,$e7,$e7,$e7,$e7,$e7,$ff
         byte    $99,$99,$99,$99,$99,$99,$c3,$ff
         byte    $99,$99,$99,$99,$99,$c3,$e7,$ff
-        byte    $9c,$9c,$9c,$94,$80,$88,$9c,$ff
+        byte    $FC,$FC,$FC,$94,$80,$88,$FC,$ff
         byte    $99,$99,$c3,$e7,$c3,$99,$99,$ff
         byte    $99,$99,$99,$c3,$e7,$e7,$e7,$ff
         byte    $81,$f9,$f3,$e7,$cf,$9f,$81,$ff
@@ -2442,7 +2594,7 @@ CHARS_LOWER
         byte    $ff,$f9,$ff,$f9,$f9,$f9,$f9,$c3
         byte    $ff,$9f,$9f,$93,$87,$93,$99,$ff
         byte    $ff,$c7,$e7,$e7,$e7,$e7,$c3,$ff
-        byte    $ff,$ff,$99,$80,$80,$94,$9c,$ff
+        byte    $ff,$ff,$99,$80,$80,$94,$FC,$ff
         byte    $ff,$ff,$83,$99,$99,$99,$99,$ff
         byte    $ff,$ff,$c3,$99,$99,$99,$c3,$ff
         byte    $ff,$ff,$83,$99,$99,$83,$9f,$9f
@@ -2452,7 +2604,7 @@ CHARS_LOWER
         byte    $ff,$e7,$81,$e7,$e7,$e7,$f1,$ff
         byte    $ff,$ff,$99,$99,$99,$99,$c1,$ff
         byte    $ff,$ff,$99,$99,$99,$c3,$e7,$ff
-        byte    $ff,$ff,$9c,$94,$80,$c1,$c9,$ff
+        byte    $ff,$ff,$FC,$94,$80,$c1,$c9,$ff
         byte    $ff,$ff,$99,$c3,$e7,$c3,$99,$ff
         byte    $ff,$ff,$99,$99,$99,$c1,$f3,$87
         byte    $ff,$ff,$81,$f3,$e7,$cf,$81,$ff
@@ -2506,7 +2658,7 @@ CHARS_LOWER
         byte    $e1,$f3,$f3,$f3,$f3,$93,$c7,$ff
         byte    $99,$93,$87,$8f,$87,$93,$99,$ff
         byte    $9f,$9f,$9f,$9f,$9f,$9f,$81,$ff
-        byte    $9c,$88,$80,$94,$9c,$9c,$9c,$ff
+        byte    $FC,$88,$80,$94,$FC,$FC,$FC,$ff
         byte    $99,$89,$81,$81,$91,$99,$99,$ff
         byte    $c3,$99,$99,$99,$99,$99,$c3,$ff
         byte    $83,$99,$99,$83,$9f,$9f,$9f,$ff
@@ -2516,7 +2668,7 @@ CHARS_LOWER
         byte    $81,$e7,$e7,$e7,$e7,$e7,$e7,$ff
         byte    $99,$99,$99,$99,$99,$99,$c3,$ff
         byte    $99,$99,$99,$99,$99,$c3,$e7,$ff
-        byte    $9c,$9c,$9c,$94,$80,$88,$9c,$ff
+        byte    $FC,$FC,$FC,$94,$80,$88,$FC,$ff
         byte    $99,$99,$c3,$e7,$c3,$99,$99,$ff
         byte    $99,$99,$99,$c3,$e7,$e7,$e7,$ff
         byte    $81,$f9,$f3,$e7,$cf,$9f,$81,$ff
@@ -2623,7 +2775,7 @@ Options_screen_data
         BYTE    $5D,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$3A
         BYTE    $5D,$20,$46,$34,$2D,$48,$01,$0E,$07,$20,$55,$10,$20,$20,$20,$20,$20,$20,$20,$20,$20,$5D
         BYTE    $5D,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$5D
-        BYTE    $5D,$20,$46,$35,$2D,$06,$15,$14,$15,$12,$05,$2E,$2E,$2E,$20,$20,$20,$20,$20,$20,$20,$5D
+        BYTE    $5D,$20,$46,$35,$2D,$53,$01,$16,$05,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$5D
         BYTE    $5D,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$5D
         BYTE    $5D,$20,$46,$36,$2D,$44,$05,$06,$01,$15,$0C,$14,$13,$20,$20,$20,$20,$20,$20,$20,$20,$5D
         BYTE    $5D,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$20,$5D
@@ -2718,7 +2870,7 @@ Addresses_colour_data
 TXT_EDIT
         text    "Edit"
 TXT_SAVE
-        text    "Save"
+        text    "Done"
 
 TXT_LOCATION
         byte    10, 19
